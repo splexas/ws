@@ -4,6 +4,7 @@
 #include <event2/util.h>
 #include <netinet/in.h>
 #include <stdlib.h>
+#include <websockets/frame.h>
 #include <websockets/handshake.h>
 #include <websockets/websockets.h>
 
@@ -12,6 +13,10 @@
 
 #include <libbase64.h>
 #include <openssl/sha.h>
+
+#include <stdint.h>
+#include <zconf.h>
+#include <zlib.h>
 
 static const char WS_MAGIC[] = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 
@@ -65,12 +70,14 @@ static void read_cb(struct bufferevent *bev, void *ctx)
 
         /* Make a response */
         char response[1024];
-        int written = snprintf(response, sizeof(response),
-                               "HTTP/1.1 101 Switching Protocols\r\n"
-                               "upgrade: websocket\r\n"
-                               "Connection: upgrade\r\n"
-                               "Sec-WebSocket-Accept: %.*s\r\n\r\n",
-                               (int)base64_out_len, base64_out);
+        int written =
+            snprintf(response, sizeof(response),
+                     "HTTP/1.1 101 Switching Protocols\r\n"
+                     "Upgrade: websocket\r\n"
+                     "Connection: upgrade\r\n"
+                     "Sec-WebSocket-Extensions: permessage-deflate\r\n"
+                     "Sec-WebSocket-Accept: %.*s\r\n\r\n",
+                     (int)base64_out_len, base64_out);
 
         /* Send back the response */
         if (bufferevent_write(bev, response, written) != 0) {
@@ -81,7 +88,38 @@ static void read_cb(struct bufferevent *bev, void *ctx)
         cl->handshake_done = 1;
     }
     else {
-        printf("got something else\n");
+        printf("vec size: %ld\n", vec[0].iov_len);
+        ws_frame_t *frame = (ws_frame_t *)vec[0].iov_base;
+        printf("fin: %u, opcode: %u, masked: %u\n", frame->fin, frame->opcode,
+               frame->masked);
+
+        ws_payload_t payload;
+        ws_parse_payload(frame, &payload);
+
+        char output[1000];
+        size_t output_len = sizeof(output);
+
+        z_stream zstrm = {0};
+        zstrm.next_in = payload.begin;
+        zstrm.avail_in = payload.len;
+
+        zstrm.next_out = (Bytef *)output;
+        zstrm.avail_out = output_len;
+
+        int ret = inflateInit2(&zstrm, -MAX_WBITS);
+        if (ret != Z_OK) {
+            printf("failed to init inflate2\n");
+            return;
+        }
+
+        int a = inflate(&zstrm, Z_NO_FLUSH);
+        printf("inflate returned %d\n", a);
+        printf("total: %ld\n", zstrm.total_out);
+        inflateEnd(&zstrm);
+
+        if (a == Z_OK) {
+            printf("Client sent: %.*s\n", (int)zstrm.total_out, output);
+        }
     }
 }
 

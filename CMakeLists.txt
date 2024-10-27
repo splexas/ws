@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.10)
 project(websockets)
-add_executable(websockets main.c src/websockets.c src/handshake.c)
+add_executable(websockets main.c src/websockets.c src/handshake.c src/frame.c)
 target_include_directories(websockets PUBLIC include)
-target_link_libraries(websockets event crypto base64)
+target_link_libraries(websockets event crypto base64 z)
