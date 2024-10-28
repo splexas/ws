@@ -60,40 +60,31 @@ void ws_parse_frame(uint8_t *buf, const uint64_t buf_len, ws_frame_t *frame_out)
 }
 
 int ws_make_frame(const bool fin, const uint8_t opcode,
-                  const uint32_t *masking_key, const uint64_t payload_len,
-                  uint8_t *buf_out, const uint64_t buf_len)
+                  const uint64_t payload_len, uint8_t *buf_out,
+                  const uint64_t buf_len)
 {
     if (!buf_out || buf_len < 2)
         return -1;
 
     buf_out[0] = fin << 7 | opcode;
 
-    bool masked = masking_key != NULL;
     uint8_t *buf_tail = &buf_out[1];
 
     if (payload_len < 125) {
-        buf_out[1] = (masked << 7) | (uint8_t)payload_len;
+        buf_out[1] = (0 << 7) | (uint8_t)payload_len;
         buf_tail++;
     }
     else if (payload_len <= 65535) {
-        buf_out[1] = (masked << 7) | 126;
+        buf_out[1] = (0 << 7) | 126;
         // fill out additional 16 bits
         *(uint16_t *)&buf_out[2] = htons(payload_len);
         buf_tail += 3;
     }
     else {
-        buf_out[1] = (masked << 7) | 127;
+        buf_out[1] = (0 << 7) | 127;
         // fill out additional 64 bits
         *(uint64_t *)&buf_out[2] = htonll(payload_len);
         buf_tail += 9;
-    }
-
-    if (masked) {
-        if ((buf_tail - buf_out) + 4 > buf_len)
-            return -1;
-
-        *(uint32_t *)buf_tail = *masking_key;
-        buf_tail += 4;
     }
 
     return (int)(buf_tail - buf_out);

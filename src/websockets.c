@@ -110,9 +110,8 @@ static void read_cb(struct bufferevent *bev, void *ctx)
 
             // Make a response frame
             uint8_t data[1000];
-            int bytes_written =
-                ws_make_frame(true, WS_OPCODE_TEXT, NULL, sizeof(resp) - 1,
-                              data, sizeof(data));
+            int bytes_written = ws_make_frame(
+                true, WS_OPCODE_TEXT, sizeof(resp) - 1, data, sizeof(data));
 
             memcpy(data + bytes_written, resp, sizeof(resp) - 1);
             bufferevent_write(bev, data, bytes_written + sizeof(resp) - 1);

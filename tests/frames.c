@@ -4,8 +4,7 @@
 int main()
 {
     unsigned char buf[1000];
-    int bytes_written =
-        ws_make_frame(false, 1, NULL, 44444444, buf, sizeof(buf));
+    int bytes_written = ws_make_frame(false, 1, 3, buf, sizeof(buf));
     printf("bytes_written: %d\n", bytes_written);
     if (bytes_written == -1)
         return 1;
