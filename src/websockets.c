@@ -1,3 +1,4 @@
+#include <complex.h>
 #include <event2/buffer.h>
 #include <event2/bufferevent.h>
 #include <event2/listener.h>
@@ -30,7 +31,7 @@ static void read_cb(struct bufferevent *bev, void *ctx)
 
     int len = evbuffer_get_length(input);
 
-    if (cl->handshake_done == 0) {
+    if (!cl->handshake_done) {
         printf("%.*s\n", (int)vec[0].iov_len, (char *)vec[0].iov_base);
         struct header_entry *head =
             ws_parse_handshake((char *)vec[0].iov_base, len);
@@ -86,7 +87,7 @@ static void read_cb(struct bufferevent *bev, void *ctx)
             return;
         }
 
-        cl->handshake_done = 1;
+        cl->handshake_done = true;
     }
     else {
         printf("vec[0].len: %d\n", len);
@@ -105,7 +106,16 @@ static void read_cb(struct bufferevent *bev, void *ctx)
         if (frame.opcode == WS_OPCODE_TEXT) {
             printf("%.*s\n", (int)frame.len, frame.begin);
 
+            char resp[] = "hello";
+
             // Make a response frame
+            uint8_t data[1000];
+            int bytes_written =
+                ws_make_frame(true, WS_OPCODE_TEXT, NULL, sizeof(resp) - 1,
+                              data, sizeof(data));
+
+            memcpy(data + bytes_written, resp, sizeof(resp) - 1);
+            bufferevent_write(bev, data, bytes_written + sizeof(resp) - 1);
         }
     }
 }
@@ -138,7 +148,7 @@ static void accept_conn_cb(struct evconnlistener *listener, evutil_socket_t fd,
         return;
     }
 
-    cl->handshake_done = 0;
+    cl->handshake_done = false;
 
     bufferevent_setcb(bev, read_cb, NULL, event_cb, (void *)cl);
     bufferevent_enable(bev, EV_READ | EV_WRITE);
@@ -173,5 +183,14 @@ int ws_server_init(struct event_base *base, const char *ip, const uint16_t port)
     }
 
     evconnlistener_set_error_cb(listener, accept_error_cb);
+    return 0;
+}
+
+int ws_client_send(struct bufferevent *bev, const uint8_t opcode,
+                   const uint8_t *data, const uint64_t len)
+{
+    /* Make a frame here */
+    /* Send a fragmentated frame so we don't overload our resources */
+
     return 0;
 }

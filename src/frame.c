@@ -1,5 +1,23 @@
+#include <arpa/inet.h>
 #include <stdint.h>
+#include <stdlib.h>
 #include <websockets/frame.h>
+
+/* WS operates on big endian */
+
+static uint64_t ntohll(uint64_t net)
+{
+    uint32_t high = ntohl((uint32_t)(net >> 32));
+    uint32_t low = ntohl((uint32_t)(net & 0xFFFFFFFF));
+    return ((uint64_t)high << 32) | low;
+}
+
+static uint64_t htonll(uint64_t host)
+{
+    uint32_t high = htonl((uint32_t)(host >> 32));
+    uint32_t low = htonl((uint32_t)(host & 0xFFFFFFFF));
+    return ((uint64_t)high << 32) | low;
+}
 
 static void ws_payload_unmask(uint8_t *payload, const uint64_t payload_len,
                               uint8_t *masking_key)
@@ -22,12 +40,12 @@ void ws_parse_frame(uint8_t *buf, const uint64_t buf_len, ws_frame_t *frame_out)
 
     if (payload_len == 126) {
         // 16bit
-        payload_len = (uint64_t) * (uint16_t *)payload_begin;
+        payload_len = (uint64_t)ntohs(*(uint16_t *)payload_begin);
         payload_begin += 2;
     }
     else if (payload_len == 127) {
         // 64 bit
-        payload_len = *(uint64_t *)payload_begin;
+        payload_len = ntohll(*(uint64_t *)payload_begin);
         payload_begin += 8;
     }
 
@@ -39,4 +57,44 @@ void ws_parse_frame(uint8_t *buf, const uint64_t buf_len, ws_frame_t *frame_out)
 
     frame_out->begin = payload_begin;
     frame_out->len = payload_len;
+}
+
+int ws_make_frame(const bool fin, const uint8_t opcode,
+                  const uint32_t *masking_key, const uint64_t payload_len,
+                  uint8_t *buf_out, const uint64_t buf_len)
+{
+    if (!buf_out || buf_len < 2)
+        return -1;
+
+    buf_out[0] = fin << 7 | opcode;
+
+    bool masked = masking_key != NULL;
+    uint8_t *buf_tail = &buf_out[1];
+
+    if (payload_len < 125) {
+        buf_out[1] = (masked << 7) | (uint8_t)payload_len;
+        buf_tail++;
+    }
+    else if (payload_len <= 65535) {
+        buf_out[1] = (masked << 7) | 126;
+        // fill out additional 16 bits
+        *(uint16_t *)&buf_out[2] = htons(payload_len);
+        buf_tail += 3;
+    }
+    else {
+        buf_out[1] = (masked << 7) | 127;
+        // fill out additional 64 bits
+        *(uint64_t *)&buf_out[2] = htonll(payload_len);
+        buf_tail += 9;
+    }
+
+    if (masked) {
+        if ((buf_tail - buf_out) + 4 > buf_len)
+            return -1;
+
+        *(uint32_t *)buf_tail = *masking_key;
+        buf_tail += 4;
+    }
+
+    return (int)(buf_tail - buf_out);
 }
