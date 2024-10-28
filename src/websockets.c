@@ -31,6 +31,7 @@ static void read_cb(struct bufferevent *bev, void *ctx)
     int len = evbuffer_get_length(input);
 
     if (cl->handshake_done == 0) {
+        printf("%.*s\n", (int)vec[0].iov_len, (char *)vec[0].iov_base);
         struct header_entry *head =
             ws_parse_handshake((char *)vec[0].iov_base, len);
         if (!head) {
@@ -74,8 +75,8 @@ static void read_cb(struct bufferevent *bev, void *ctx)
             snprintf(response, sizeof(response),
                      "HTTP/1.1 101 Switching Protocols\r\n"
                      "Upgrade: websocket\r\n"
-                     "Connection: upgrade\r\n"
-                     "Sec-WebSocket-Extensions: permessage-deflate\r\n"
+                     "Connection: Upgrade\r\n"
+                     //"Sec-WebSocket-Extensions: permessage-deflate\r\n"
                      "Sec-WebSocket-Accept: %.*s\r\n\r\n",
                      (int)base64_out_len, base64_out);
 
@@ -88,37 +89,23 @@ static void read_cb(struct bufferevent *bev, void *ctx)
         cl->handshake_done = 1;
     }
     else {
-        printf("vec size: %ld\n", vec[0].iov_len);
-        ws_frame_t *frame = (ws_frame_t *)vec[0].iov_base;
-        printf("fin: %u, opcode: %u, masked: %u\n", frame->fin, frame->opcode,
-               frame->masked);
-
-        ws_payload_t payload;
-        ws_parse_payload(frame, &payload);
-
-        char output[1000];
-        size_t output_len = sizeof(output);
-
-        z_stream zstrm = {0};
-        zstrm.next_in = payload.begin;
-        zstrm.avail_in = payload.len;
-
-        zstrm.next_out = (Bytef *)output;
-        zstrm.avail_out = output_len;
-
-        int ret = inflateInit2(&zstrm, -MAX_WBITS);
-        if (ret != Z_OK) {
-            printf("failed to init inflate2\n");
-            return;
+        printf("vec[0].len: %d\n", len);
+        uint8_t *buf = (uint8_t *)vec[0].iov_base;
+        for (int i = 0; i < len; i++) {
+            printf("%02x ", buf[i]);
         }
+        printf("\n");
 
-        int a = inflate(&zstrm, Z_NO_FLUSH);
-        printf("inflate returned %d\n", a);
-        printf("total: %ld\n", zstrm.total_out);
-        inflateEnd(&zstrm);
+        ws_frame_t frame;
+        ws_parse_frame(buf, len, &frame);
+        printf("Parsed frame: \n");
+        printf("FIN: %u, opcode: %u, length: %lu\n", frame.fin, frame.opcode,
+               frame.len);
 
-        if (a == Z_OK) {
-            printf("Client sent: %.*s\n", (int)zstrm.total_out, output);
+        if (frame.opcode == WS_OPCODE_TEXT) {
+            printf("%.*s\n", (int)frame.len, frame.begin);
+
+            // Make a response frame
         }
     }
 }

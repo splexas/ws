@@ -6,12 +6,20 @@
         var socket = new WebSocket("ws://localhost:44444")
         socket.addEventListener("open", (event) => {
             console.log("Connected!!");
-            socket.send("abc");
+            socket.send("Hello, world!");
         });
 
         // Listen for messages
         socket.addEventListener("message", (event) => {
             console.log("Message from server ", event.data);
+        });
+
+        socket.addEventListener("error", (event) => {
+            console.error("WebSocket error observed:", event);
+        });
+
+        socket.addEventListener("close", (event) => {
+            console.log("Connection closed:", event);
         });
     </script>
 </body>
