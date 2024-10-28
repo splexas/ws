@@ -1,6 +1,5 @@
 #include <arpa/inet.h>
 #include <stdint.h>
-#include <stdlib.h>
 #include <websockets/frame.h>
 
 /* WS operates on big endian */
@@ -59,6 +58,11 @@ void ws_parse_frame(uint8_t *buf, const uint64_t buf_len, ws_frame_t *frame_out)
     frame_out->len = payload_len;
 }
 
+int ws_calc_frame_size(const uint64_t payload_len)
+{
+    return 2 + payload_len <= 65535 ? 2 : 8;
+}
+
 int ws_make_frame(const bool fin, const uint8_t opcode,
                   const uint64_t payload_len, uint8_t *buf_out,
                   const uint64_t buf_len)
@@ -70,18 +74,18 @@ int ws_make_frame(const bool fin, const uint8_t opcode,
 
     uint8_t *buf_tail = &buf_out[1];
 
-    if (payload_len < 125) {
-        buf_out[1] = (0 << 7) | (uint8_t)payload_len;
+    if (payload_len <= 125) {
+        buf_out[1] = (uint8_t)payload_len;
         buf_tail++;
     }
     else if (payload_len <= 65535) {
-        buf_out[1] = (0 << 7) | 126;
+        buf_out[1] = 126;
         // fill out additional 16 bits
         *(uint16_t *)&buf_out[2] = htons(payload_len);
         buf_tail += 3;
     }
     else {
-        buf_out[1] = (0 << 7) | 127;
+        buf_out[1] = 127;
         // fill out additional 64 bits
         *(uint64_t *)&buf_out[2] = htonll(payload_len);
         buf_tail += 9;
