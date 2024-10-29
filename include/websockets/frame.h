@@ -40,17 +40,20 @@ extern "C" {
 #define WS_OPCODE_PONG 10
 
 typedef struct ws_frame {
-    uint8_t fin;
+    bool fin;
     uint8_t opcode;
     uint64_t len;
     uint8_t *begin;
 } ws_frame_t;
 
-void ws_parse_frame(uint8_t *buf, const uint64_t buf_len,
-                    ws_frame_t *frame_out);
+/* Parses frames received from a ws client, meaning it includes the masking key
+ */
+int ws_parse_frame(uint8_t *buf, const uint64_t buf_len, ws_frame_t *frame_out);
 
+/* Returns a frame size based on `payload_len` without a masking key */
 int ws_calc_frame_size(const uint64_t payload_len);
 
+/* Makes a frame for ws clients to be sent */
 int ws_make_frame(const bool fin, const uint8_t opcode,
                   const uint64_t payload_len, uint8_t *buf_out,
                   const uint64_t buf_len);

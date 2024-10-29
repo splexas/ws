@@ -24,6 +24,7 @@ SOFTWARE.
 
 #include <event2/buffer.h>
 #include <event2/bufferevent.h>
+#include <event2/event.h>
 #include <event2/listener.h>
 #include <event2/util.h>
 #include <netinet/in.h>
@@ -97,10 +98,6 @@ static void read_cb(struct bufferevent *bev, void *ctx)
 
         /* Base64 encode the SHA1 hash */
         char base64_out[1024];
-
-        // base64_encode((const char *)hash, sizeof(hash), base64_out,
-        //               &base64_out_len, 0);
-
         int base64_out_len = EVP_EncodeBlock((unsigned char *)base64_out, hash,
                                              SHA_DIGEST_LENGTH);
 
@@ -129,7 +126,13 @@ static void read_cb(struct bufferevent *bev, void *ctx)
     else {
         uint8_t *buf = (uint8_t *)vec[0].iov_base;
         ws_frame_t frame;
-        ws_parse_frame(buf, len, &frame);
+        int frame_size = ws_parse_frame(buf, len, &frame);
+
+        /* malformed request? */
+        if (frame_size == -1) {
+            bufferevent_free(bev);
+            return;
+        }
 
         if (frame.opcode == WS_OPCODE_CLOSE) {
             if (_ctx.close_cb)
@@ -152,7 +155,12 @@ static void read_cb(struct bufferevent *bev, void *ctx)
                              cl->ctx);
         }
 
-        evbuffer_drain(input, len);
+        /* drain frame and frame payload */
+        evbuffer_drain(input, frame_size + frame.len);
+
+        /* check if we have any more ongoing messages */
+        if (evbuffer_get_length(input) >= 2)
+            bufferevent_trigger(bev, EV_READ, 0);
     }
 }
 

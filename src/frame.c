@@ -49,7 +49,7 @@ static void ws_payload_unmask(uint8_t *payload, const uint64_t payload_len,
         payload[i] ^= masking_key[i % 4];
 }
 
-void ws_parse_frame(uint8_t *buf, const uint64_t buf_len, ws_frame_t *frame_out)
+int ws_parse_frame(uint8_t *buf, const uint64_t buf_len, ws_frame_t *frame_out)
 {
     // 1|000|1011
     frame_out->opcode = buf[0] & 0xf;
@@ -57,7 +57,12 @@ void ws_parse_frame(uint8_t *buf, const uint64_t buf_len, ws_frame_t *frame_out)
 
     // 1|1111101 (125 payload len)
     uint64_t payload_len = buf[1] & 0x7f;
-    uint8_t masked = buf[1] >> 7;
+    bool masked = buf[1] >> 7;
+
+    if (!masked) {
+        // clients must send masked payloads
+        return -1;
+    }
 
     uint8_t *payload_begin = &buf[2];
 
@@ -72,19 +77,22 @@ void ws_parse_frame(uint8_t *buf, const uint64_t buf_len, ws_frame_t *frame_out)
         payload_begin += 8;
     }
 
-    if (masked) {
-        uint8_t *masking_key = payload_begin;
-        payload_begin += 4;
-        ws_payload_unmask(payload_begin, payload_len, masking_key);
-    }
+    uint8_t *masking_key = payload_begin;
+    payload_begin += 4;
+    ws_payload_unmask(payload_begin, payload_len, masking_key);
 
     frame_out->begin = payload_begin;
     frame_out->len = payload_len;
+
+    return (int)(payload_begin - buf);
 }
 
 int ws_calc_frame_size(const uint64_t payload_len)
 {
-    return 2 + payload_len <= 65535 ? 2 : 8;
+    int r = 2;
+    if (payload_len <= 125)
+        return r;
+    return r + (payload_len <= 65535 ? 2 : 8);
 }
 
 int ws_make_frame(const bool fin, const uint8_t opcode,
