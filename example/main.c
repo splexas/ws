@@ -54,6 +54,8 @@ void accept_cb(struct bufferevent *bev, struct ws_client *client)
 void close_cb(struct bufferevent *bev, void *ctx)
 {
     printf("WebSocket client will close after this callback\n");
+    int *a = (int *)ctx;
+    free(a);
 }
 
 int main()
